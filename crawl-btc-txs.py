@@ -4,21 +4,19 @@ from time import sleep
 import os
 
 transaction_history = []  # Danh sách lưu lịch sử giao dịch
-LAST_PROCESSED_BLOCK_FILE = "last_processed_block.txt"  # File lưu block cuối cùng đã xử lý
+CSV_FILE = "transaction_history.csv"  # File lưu lịch sử giao dịch
 
 
-def get_last_processed_block():
-    # Đọc block cuối cùng đã xử lý từ file
-    if os.path.exists(LAST_PROCESSED_BLOCK_FILE):
-        with open(LAST_PROCESSED_BLOCK_FILE, "r") as f:
-            return int(f.read().strip())
-    return 1  # Nếu file không tồn tại, bắt đầu từ block 1
-
-
-def save_last_processed_block(block_height):
-    # Lưu block cuối cùng đã xử lý vào file
-    with open(LAST_PROCESSED_BLOCK_FILE, "w") as f:
-        f.write(str(block_height))
+def get_last_processed_block_from_csv():
+    # Đọc block cuối cùng từ file CSV
+    if os.path.exists(CSV_FILE):
+        with open(CSV_FILE, "r", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            rows = list(reader)  # Đọc toàn bộ nội dung file
+            if len(rows) > 1:  # Nếu file có dữ liệu (ít nhất 1 dòng header và 1 dòng dữ liệu)
+                last_row = rows[-1]
+                return int(last_row[0])  # Lấy block_height từ dòng cuối cùng
+    return 1  # Nếu file không tồn tại hoặc rỗng, bắt đầu từ block 1
 
 
 def fetch_bitcoin_block_data():
@@ -35,8 +33,8 @@ def fetch_bitcoin_block_data():
         print(f"Đã xảy ra lỗi khi lấy thông tin block mới nhất: {e}")
         return
 
-    # Đọc block cuối cùng đã xử lý
-    start_block = get_last_processed_block()
+    # Đọc block cuối cùng đã xử lý từ CSV
+    start_block = get_last_processed_block_from_csv() + 1
     print(f"Bắt đầu crawl từ block: {start_block}")
 
     try:
@@ -91,12 +89,9 @@ def fetch_bitcoin_block_data():
             except requests.exceptions.RequestException as e:
                 print(f"Đã xảy ra lỗi khi lấy dữ liệu block height {block_height}: {e}")
 
-            # Lưu lịch sử giao dịch ra file CSV sau mỗi 1.000 block
+            # Lưu lịch sử giao dịch ra file CSV sau mỗi 10 block
             if block_height % 10 == 0:
-                save_to_csv(transaction_history, "transaction_history.csv")
-
-            # Lưu block hiện tại vào file
-            save_last_processed_block(block_height)
+                save_to_csv(transaction_history, CSV_FILE)
 
             # Thêm sleep để tránh rate limit
             sleep(0.1)
@@ -104,18 +99,21 @@ def fetch_bitcoin_block_data():
         print(f"Đã xảy ra lỗi trong quá trình xử lý block: {e}")
     finally:
         # Lưu toàn bộ lịch sử giao dịch ra file CSV
-        save_to_csv(transaction_history, "transaction_history.csv")
+        save_to_csv(transaction_history, CSV_FILE)
 
 
 def save_to_csv(data, filename):
     # Lưu dữ liệu vào file CSV
-    with open(filename, mode="w", newline="", encoding="utf-8") as f:
+    file_exists = os.path.exists(filename)
+    with open(filename, mode="a" if file_exists else "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        # Ghi tiêu đề
-        writer.writerow(["block_height", "sender", "recipient", "amount"])
+        # Ghi tiêu đề nếu file chưa tồn tại
+        if not file_exists:
+            writer.writerow(["block_height", "sender", "recipient", "amount"])
         # Ghi dữ liệu
         for tx in data:
             writer.writerow([tx["block_height"], tx["sender"], tx["recipient"], tx["amount"]])
+    data.clear()  # Xóa dữ liệu khỏi bộ nhớ sau khi lưu
 
 
 if __name__ == "__main__":
